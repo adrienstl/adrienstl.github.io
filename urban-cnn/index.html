@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rating cities from satellite images – Adrien Stal</title>
+  <meta name="description" content="A multi-head ResNet-18 that rates satellite tiles of Canadian cities for building density, street connectivity and green space, tested on a held-out city.">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <main class="page">
+    <a class="home-link" href="../">Adrien Stal</a>
+
+    <header class="project-head">
+      <h1>Rating cities from satellite images</h1>
+      <p>APS360 Applied Fundamentals of Deep Learning, 2026. Individual project.</p>
+      <p class="tools">Python, PyTorch, ResNet-18, OpenStreetMap, Google Colab</p>
+    </header>
+
+    <p class="lead">Give the model a satellite image of about 0.8&nbsp;km² of a Canadian city and it rates three things from 1 to 3: building density, street connectivity, and green or public space. The idea is a quick first read of an area for urban planners, before anyone opens a map or makes a site visit.</p>
+    <figure>
+      <a class="zoom" href="overview.png"><img src="overview.png" width="1400" height="562" alt="A satellite tile goes into a CNN, which outputs a density score, a street connectivity score and a parks and public spaces score, each out of 3."></a>
+    </figure>
+
+    <h2>Data</h2>
+    <p>I cut five cities (Toronto, Montreal, Vancouver, Ottawa and Calgary) into standard zoom-15 map tiles of Esri World Imagery. The labels came from OpenStreetMap: building footprint area for density, intersections per km² for connectivity, and green space area for the third rating. Each metric was split into three levels, with the cutoffs set on the training set only. Loading a whole province's OpenStreetMap extract ran out of memory, so I cut each extract down to the city first.</p>
+    <p>After removing tiles of open water, low-quality images and tiles with no roads at all, 2,488 of the 3,188 tiles were usable: 2,084 for training and 404 for validation. Edmonton was kept out completely as the test city (614 tiles) and labelled with the same cutoffs, so not even the rating scale was influenced by it.</p>
+
+    <h2>Model</h2>
+    <p>With only about 2,000 training tiles, a CNN trained from scratch would overfit, so I started from a ResNet-18 pretrained on ImageNet. Everything up to <code>layer3</code> is frozen and only <code>layer4</code> is fine-tuned, which leaves 8.6M trainable parameters and 2.8M frozen. Global average pooling turns the final feature maps into a 512-value embedding that feeds three separate heads, one per rating. Each head is 512 → 128 → ReLU → dropout (0.5) → 3.</p>
+    <figure>
+      <a class="zoom" href="architecture.png"><img src="architecture.png" width="1600" height="357" alt="Pipeline: a 512 by 512 satellite tile resized to 384 by 384 goes through a ResNet feature extractor, global average pooling and a 512-value embedding, then into three heads for density, connectivity and green ratings."></a>
+    </figure>
+    <p>Training used the sum of the three cross-entropy losses, Adam with a learning rate of 1e-4 for the backbone and 1e-3 for the heads, weight decay of 1e-4, batches of 16 and 15 epochs. Tiles were augmented with flips, 90° rotations and colour jitter, and fed in at 384×384.</p>
+
+    <h2>Results on Edmonton</h2>
+    <p>Mean accuracy on the unseen city was 0.714, compared with 0.743 on validation, so the model lost only three points moving to a city it had never seen. It beat a random forest trained on hand-made colour and texture features in every category, and it was almost never off by two levels.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Rating</th>
+            <th class="num">CNN</th>
+            <th class="num">Random forest</th>
+            <th class="num">Most common class</th>
+            <th class="num">CNN within one level</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Density</td><td class="num">0.697</td><td class="num">0.648</td><td class="num">0.316</td><td class="num">0.997</td></tr>
+          <tr><td>Connectivity</td><td class="num">0.718</td><td class="num">0.542</td><td class="num">0.298</td><td class="num">0.995</td></tr>
+          <tr><td>Green space</td><td class="num">0.728</td><td class="num">0.591</td><td class="num">0.414</td><td class="num">0.927</td></tr>
+          <tr class="total"><td>Mean</td><td class="num">0.714</td><td class="num">0.594</td><td class="num">0.343</td><td class="num">0.973</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figure>
+      <a class="zoom" href="confusion-matrices.png"><img src="confusion-matrices.png" width="1600" height="553" alt="Three confusion matrices for density, connectivity and green, with true rating on the vertical axis and predicted rating on the horizontal axis. The diagonals are strongest for ratings 1 and 3."></a>
+      <figcaption>Confusion matrices on Edmonton. Ratings 1 and 3 are predicted reliably; most mistakes involve the middle rating.</figcaption>
+    </figure>
+    <figure>
+      <a class="zoom" href="training-curves.png"><img src="training-curves.png" width="1600" height="574" alt="Loss and mean accuracy per epoch for training and validation over 15 epochs. Validation accuracy levels off around 0.74, close to training accuracy."></a>
+      <figcaption>Training and validation loss and accuracy over 15 epochs.</figcaption>
+    </figure>
+
+    <h2>What I learned</h2>
+    <p>Input resolution mattered more than anything else I changed. Going from 224×224 to 384×384 raised validation accuracy to 0.743 and shrank the gap between training and validation accuracy from 0.135 to 0.02. At 224 the details that separate the levels, like intersections and narrow streets, were lost, and the model made up for it by memorizing.</p>
+    <p>The middle rating is the hard one, with accuracies of 0.46, 0.58 and 0.43 across the three categories. Levels 1 and 3 are open-ended, while level 2 picks up noise from both sides of its range. The most common single error was rating a density-2 tile as 3.</p>
+    <figure>
+      <a class="zoom" href="predictions.jpg"><img src="predictions.jpg" width="1600" height="863" alt="Eight Edmonton satellite tiles in two rows, each labelled with predicted and true ratings. The top row is correct; the bottom row shows tiles with large warehouses and parking lots rated too dense."></a>
+      <figcaption>Top row: correct predictions. Bottom row: true density 2 predicted as 3. Big warehouse roofs and parking lots look like dense building cover.</figcaption>
+    </figure>
+    <p>The labels have limits too. OpenStreetMap is mapped by volunteers and coverage is uneven, so a low green score can mean an under-mapped area rather than a less green one. And every rating is relative to the five training cities, so the model would give confident but meaningless answers for a US city or one without a street grid.</p>
+
+    <h2>Code</h2>
+    <ul class="files">
+      <li>
+        <a href="https://github.com/adrienstl/adrienstl.github.io/blob/main/urban-cnn/train_cnn.ipynb">train_cnn.ipynb</a>
+        <span class="note">The Colab notebook: dataset, model, training, the Edmonton test and the figures on this page.</span>
+      </li>
+    </ul>
+
+    <nav class="next" aria-label="More projects">
+      <div>
+        <span>Next project</span>
+        <a href="../systolic-array/">Reconfigurable systolic array accelerator</a>
+      </div>
+      <div>
+        <span>Back to</span>
+        <a href="../">All projects</a>
+      </div>
+    </nav>
+  </main>
+</body>
+</html>

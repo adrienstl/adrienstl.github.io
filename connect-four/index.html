@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connect Four in hardware – Adrien Stal</title>
+  <meta name="description" content="A two-player Connect Four game built in Verilog on the DE1-SoC FPGA, with a PS/2 keyboard, VGA output and hardware win detection.">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <main class="page">
+    <a class="home-link" href="../">Adrien Stal</a>
+
+    <header class="project-head">
+      <h1>Connect Four in hardware</h1>
+      <p>ECE241 Digital Systems, 2025. Built with Patrick Szpargala.</p>
+      <p class="tools">Verilog, SystemVerilog, ModelSim, Quartus Prime, DE1-SoC FPGA, VGA, PS/2</p>
+    </header>
+
+    <p class="lead">A two-player Connect Four game that runs on the DE1-SoC FPGA with no processor involved. Players move a cursor with a PS/2 keyboard and drop pieces into a 7×6 board drawn on a VGA monitor. The hardware places each piece, rejects moves into full columns, and checks for four in a row after every drop.</p>
+
+    <div class="photos">
+      <figure>
+        <a class="zoom" href="photo-cursor.jpg"><img src="photo-cursor.jpg" width="1000" height="578" alt="Empty blue Connect Four board on a monitor with a yellow triangle cursor above the first column"></a>
+        <figcaption>Choosing a column</figcaption>
+      </figure>
+      <figure>
+        <a class="zoom" href="photo-pieces.jpg"><img src="photo-pieces.jpg" width="1000" height="577" alt="Board with three red pieces stacked in the first column and two yellow pieces beside them"></a>
+        <figcaption>Pieces stacking up</figcaption>
+      </figure>
+      <figure>
+        <a class="zoom" href="photo-win.jpg"><img src="photo-win.jpg" width="1000" height="564" alt="Monitor showing a large red circle on a dark screen"></a>
+        <figcaption>Red wins</figcaption>
+      </figure>
+    </div>
+
+    <h2>How it fits together</h2>
+    <p>Keyboard input becomes single-cycle pulses: move left, move right, drop. The main game FSM owns the board and calls the win checker after every move. A separate drawing FSM watches for changes and updates the screen through the VGA adapter, and the board's LEDs show errors such as trying to drop into a full column.</p>
+    <figure>
+      <a class="zoom" href="block-diagram.png"><img src="block-diagram.png" width="1600" height="769" alt="Block diagram: PS/2 keyboard interface, cursor logic and global clock and reset feed the main game logic FSM, which contains the win checker. The FSM drives the error LEDs and the VGA drawing logic, which feeds the VGA adapter and the visual output."></a>
+      <figcaption>Top-level blocks.</figcaption>
+    </figure>
+
+    <h2>Game logic</h2>
+    <p>The game FSM has four states: reset, wait, drop and win. It takes the cursor's column and a drop pulse, finds the lowest empty row in that column, and writes the piece. The win checker is combinational. It looks for four matching pieces horizontally, vertically and along both diagonals, and raises a flag that sends the FSM to its win state.</p>
+    <figure>
+      <a class="zoom" href="game-logic.png"><img src="game-logic.png" width="1600" height="859" alt="Main game FSM with states S_Reset, S_Wait, S_Drop and S_Win, connected by a winner flag to a combinational win checker that does horizontal, vertical and both diagonal checks. Inputs are cursor_col and drop_pulse; outputs are move_pulse, is_col_full, move_row, move_col, move_player and winner_out."></a>
+      <figcaption>The game FSM and the win checker, with the signals between them.</figcaption>
+    </figure>
+
+    <h2>Drawing the screen</h2>
+    <p>Drawing is handled by a separate FSM. It clears the screen, paints the board and its holes, then sits idle until something changes. Moving the cursor erases the old triangle and draws a new one, a dropped piece is drawn in its cell, and a win starts a wipe animation. Each pixel goes to the VGA adapter as an x and y position, a colour and a write enable.</p>
+    <figure>
+      <a class="zoom" href="drawing-fsm.png"><img src="drawing-fsm.png" width="1600" height="854" alt="VGA drawing FSM with states for waiting for start, clearing, painting the board and holes, idling, erasing and redrawing the cursor triangle, drawing a placed piece, and the win animation. It sends final_x, final_y, current_color and pixel_write to the VGA adapter, which drives the visual output. A game_active signal from the E key switches between the start screen and the game."></a>
+      <figcaption>The drawing FSM. Pressing E moves from the start screen to the game.</figcaption>
+    </figure>
+
+    <h2>Reading the keyboard</h2>
+    <p>The PS/2 keyboard clock is slow and has no relation to the board's 50&nbsp;MHz clock, so it first passes through a two-flip-flop synchronizer. On each falling edge of the keyboard clock one bit is shifted into a register. Once a full 11-bit packet has arrived, the middle 8 bits are decoded, and a key like A produces a one-cycle <code>left_pulse</code> that moves the cursor one column.</p>
+
+    <h2>Testing in simulation</h2>
+    <p>We simulated the game logic in ModelSim before putting it on the board. In this run of the win-checker testbench, pieces go into two columns in turns until one player has four stacked vertically. The vertical count <code>v</code> reaches 4 and the game-over flag <code>GO</code> latches.</p>
+    <figure class="bordered">
+      <a class="zoom" href="modelsim-win-check.png"><img src="modelsim-win-check.png" width="1075" height="310" alt="ModelSim transcript lines showing the current player, column, last placed position and neighbour counts each cycle, ending with v=4, any=1 and GO=1."></a>
+      <figcaption>End of the win-checker simulation in ModelSim.</figcaption>
+    </figure>
+
+    <h2>Problems we ran into</h2>
+    <ul>
+      <li>The RAM block generated by Quartus wouldn't give us the read and write access we needed. We switched the project to SystemVerilog and wrote the board memory ourselves as a two-dimensional array.</li>
+      <li>Using two VGA modules, one for a start-screen image and one for a board image, caused timing problems. We dropped the board image and drew the board in logic instead.</li>
+      <li>Keyboard input was unreliable until we added the synchronizer, based on Prof. Stephen Brown's PS/2 example code for the course.</li>
+    </ul>
+
+    <h2>My part</h2>
+    <p>Patrick and I split the work by module. I wrote the game FSM, the horizontal and vertical win checks, the screen reset and the full-column error detection, designed the cursor, and drew up the top-level block diagram. We built the board memory and the data flow between the game FSM and the drawing FSM together. Patrick wrote the drawing FSM, the diagonal win checks, the keyboard interface and the cursor logic.</p>
+
+    <h2>Code</h2>
+    <ul class="files">
+      <li>
+        <a href="https://github.com/adrienstl/adrienstl.github.io/blob/main/connect-four/connect4.v">connect4.v</a>
+        <span class="note">The board, controller FSM and a win checker that looks outward from the last piece dropped. This version takes the column from the board's switches and reports to the LEDs. The VGA and keyboard modules aren't included.</span>
+      </li>
+    </ul>
+
+    <nav class="next" aria-label="More projects">
+      <div>
+        <span>Next project</span>
+        <a href="../audio-mixer/">Real-time audio mixer</a>
+      </div>
+      <div>
+        <span>Back to</span>
+        <a href="../">All projects</a>
+      </div>
+    </nav>
+  </main>
+</body>
+</html>

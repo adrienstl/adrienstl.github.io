@@ -1,0 +1,414 @@
+/* Site styles for adrienstl.github.io */
+
+:root {
+  --paper: #ffffff;
+  --ink: #18212d;
+  --muted: #5a6472;
+  --rule: #e2e5e9;
+  --panel: #f3f5f6;
+  --accent: #1a6b50;
+
+  --text-width: 38rem;
+  --page-width: 54rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  text-rendering: optimizeLegibility;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+a:hover {
+  color: var(--accent);
+  text-decoration-thickness: 2px;
+}
+
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.page {
+  max-width: var(--page-width);
+  margin: 0 auto;
+  padding: 3.5rem 1rem 5rem;
+}
+
+/* Text column. Figures are allowed to run wider. */
+.page > p,
+.page > h2,
+.page > h3,
+.page > ul:not(.projects),
+.page > ol,
+.page > dl {
+  max-width: var(--text-width);
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.2;
+  font-weight: 700;
+  margin: 0;
+}
+
+h1 {
+  font-size: 2.5rem;
+  letter-spacing: -0.025em;
+}
+
+h2 {
+  font-size: 1.3rem;
+  letter-spacing: -0.01em;
+  margin-top: 3rem;
+  margin-bottom: 0.75rem;
+}
+
+p,
+ul,
+ol {
+  margin: 0 0 1rem;
+}
+
+ul,
+ol {
+  padding-left: 1.25rem;
+}
+
+li + li {
+  margin-top: 0.4rem;
+}
+
+strong {
+  font-weight: 600;
+}
+
+code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+/* ---------- Home ---------- */
+
+.intro h1 {
+  font-size: clamp(2.6rem, 8vw, 3.75rem);
+  letter-spacing: -0.035em;
+  margin-bottom: 1.5rem;
+}
+
+.intro p {
+  max-width: var(--text-width);
+}
+
+.intro .lede {
+  font-size: 1.25rem;
+  line-height: 1.5;
+}
+
+.contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 1.75rem 0 0;
+}
+
+.contact li + li {
+  margin-top: 0;
+}
+
+.projects {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.projects li {
+  margin: 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.projects a {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 2rem;
+  padding: 1.35rem 0;
+  text-decoration: none;
+}
+
+.projects a:hover {
+  color: inherit;
+}
+
+.projects .title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.projects a:hover .title {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.2em;
+}
+
+.projects .year {
+  color: var(--muted);
+}
+
+.projects .summary {
+  grid-column: 1 / -1;
+  max-width: var(--text-width);
+  margin-top: 0.35rem;
+}
+
+.projects .tools {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.95rem;
+  margin-top: 0.35rem;
+}
+
+.home-section-title {
+  margin-top: 4rem;
+  margin-bottom: 1rem;
+}
+
+/* ---------- Project pages ---------- */
+
+.home-link {
+  display: inline-block;
+  font-weight: 600;
+  text-decoration: none;
+  margin-bottom: 3rem;
+}
+
+.home-link:hover {
+  text-decoration: underline;
+}
+
+.project-head {
+  margin-bottom: 2.5rem;
+}
+
+.project-head h1 {
+  margin-bottom: 0.75rem;
+  max-width: 40rem;
+}
+
+.project-head p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.project-head .tools {
+  margin-top: 0.15rem;
+}
+
+.lead {
+  font-size: 1.2rem;
+  line-height: 1.5;
+}
+
+figure {
+  margin: 2.25rem 0;
+}
+
+a.zoom {
+  display: block;
+  cursor: zoom-in;
+}
+
+figure.panel img {
+  background: var(--panel);
+}
+
+figure.bordered img {
+  border: 1px solid var(--rule);
+}
+
+figcaption {
+  max-width: var(--text-width);
+  color: var(--muted);
+  font-size: 0.95rem;
+  margin-top: 0.65rem;
+}
+
+.photos {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin: 2.25rem 0;
+}
+
+.photos figure {
+  margin: 0;
+}
+
+.photos img {
+  aspect-ratio: 16 / 9.4;
+  object-fit: cover;
+  width: 100%;
+}
+
+.photos figcaption {
+  margin-top: 0.4rem;
+}
+
+.table-wrap {
+  max-width: 46rem;
+  overflow-x: auto;
+  margin: 1.5rem 0 1.75rem;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.97rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.55rem 1rem 0.55rem 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+td:first-child {
+  white-space: nowrap;
+}
+
+thead th {
+  border-bottom-color: var(--ink);
+}
+
+td.num,
+th.num {
+  text-align: right;
+  padding-right: 0;
+  padding-left: 1rem;
+}
+
+tr.total td {
+  font-weight: 600;
+}
+
+.files {
+  list-style: none;
+  padding: 0;
+}
+
+.files li {
+  padding-left: 0;
+}
+
+.files .note {
+  display: block;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.next {
+  margin-top: 4.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rule);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+}
+
+.next span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.next a {
+  font-weight: 600;
+}
+
+/* ---------- Small screens ---------- */
+
+@media (max-width: 560px) {
+  body {
+    font-size: 1rem;
+  }
+
+  .page {
+    padding-top: 2.25rem;
+  }
+
+  h1 {
+    font-size: 2rem;
+  }
+
+  .intro .lede,
+  .lead {
+    font-size: 1.1rem;
+  }
+
+  .home-link {
+    margin-bottom: 2rem;
+  }
+
+  .projects a {
+    grid-template-columns: 1fr;
+  }
+
+  .projects .year {
+    order: -1;
+    font-size: 0.95rem;
+  }
+
+  .photos {
+    gap: 0.5rem;
+  }
+
+  .photos figcaption {
+    font-size: 0.85rem;
+  }
+
+  th,
+  td {
+    padding-right: 0.6rem;
+  }
+}

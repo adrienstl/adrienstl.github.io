@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reconfigurable systolic array accelerator · Adrien Stal</title>
+  <meta name="description" content="A SystemVerilog systolic array for neural network matrix multiplication with run-time dataflow and precision switching, controlled by an RV32I core over memory-mapped I/O.">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <main class="page">
+    <a class="home-link" href="../">Adrien Stal</a>
+
+    <header class="project-head">
+      <h1>Reconfigurable systolic array accelerator</h1>
+      <p>2026</p>
+      <p class="tools">SystemVerilog, RV32I, memory-mapped I/O, FPGA DSP blocks</p>
+    </header>
+
+    <p class="lead">Most of the work in a neural network layer is matrix multiplication. A systolic array does it with a grid of multiply-accumulate (MAC) units that pass operands to their neighbours every cycle, so each value fetched from memory gets reused many times.</p>
+    <p>A typical array's behaviour is fixed when it's synthesized. I wanted one where the dataflow, the arithmetic precision and the matrix size could all be changed from software while it runs, so I built the array, its MAC units, and a small RISC-V processor to control it, all in SystemVerilog.</p>
+
+    <h2>Three dataflows, one array</h2>
+    <p>There are three common ways to schedule a matrix multiply on a systolic array, depending on which operand stays put in each processing element:</p>
+    <ul>
+      <li><strong>Weight stationary</strong>: each element holds a weight while the inputs stream past it.</li>
+      <li><strong>Input stationary</strong>: each element holds an input while the weights stream past it.</li>
+      <li><strong>Output stationary</strong>: each element keeps its own partial sum and accumulates in place.</li>
+    </ul>
+    <p>Each processing element has multiplexers in front of its operand and partial-sum paths. A configuration setting picks which way the data is routed, so the same hardware runs all three dataflows and can switch between them at run time.</p>
+
+    <h2>Two precisions in the same multipliers</h2>
+    <p>The MAC units are built on the FPGA's variable-precision DSP blocks and use sub-word parallelism: the same hardware can run one 32-bit operation or two 16-bit operations side by side. The chip has a fixed budget of 174 hardware multipliers, so switching to 16-bit mode doubles the number of multiplications done per cycle when the lower precision is good enough.</p>
+
+    <h2>A processor to drive it</h2>
+    <p>To control the accelerator I wrote a single-cycle RV32I core in SystemVerilog and mapped the accelerator's control registers into its address space. A program sets the dataflow, the precision and the matrix dimensions, then starts the computation, using nothing but ordinary load and store instructions. No custom instructions or special compiler support are needed.</p>
+
+    <nav class="next" aria-label="More projects">
+      <div>
+        <span>Next project</span>
+        <a href="../connect-four/">Connect Four in hardware</a>
+      </div>
+      <div>
+        <span>Back to</span>
+        <a href="../">All projects</a>
+      </div>
+    </nav>
+  </main>
+</body>
+</html>

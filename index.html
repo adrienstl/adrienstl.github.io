@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Adrien Stal</title>
+  <meta name="description" content="Adrien Stal, Electrical and Computer Engineering student at the University of Toronto. Digital design, FPGA and computer architecture projects.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+
+    <header class="intro">
+      <h1>Adrien Stal</h1>
+      <p class="lede">I study Electrical and Computer Engineering at the University of Toronto. Most of what I build is digital hardware: RTL in Verilog and SystemVerilog, designs running on FPGA boards, and the simulations that check them first.</p>
+      <p>I'm looking for a 12–16 month PEY co-op in hardware, starting May 2027. I'm fluent in English and French, and I also speak German (B2) and some Mandarin (HSK 3).</p>
+      <ul class="contact">
+        <li><a href="resume.pdf">Resume</a></li>
+        <li><a href="https://www.linkedin.com/in/adrien-stal-5344b8339">LinkedIn</a></li>
+        <li><a href="https://github.com/adrienstl">GitHub</a></li>
+        <li><a href="mailto:adrien.stal@mail.utoronto.ca">adrien.stal@mail.utoronto.ca</a></li>
+      </ul>
+    </header>
+
+    <h2 class="home-section-title">Projects</h2>
+    <ul class="projects">
+      <li>
+        <a href="systolic-array/">
+          <span class="title">Reconfigurable systolic array accelerator</span>
+          <span class="year">2026</span>
+          <span class="summary">A matrix-multiply accelerator for neural networks that can switch dataflow and precision while it runs, controlled by a RISC-V core I wrote.</span>
+          <span class="tools">SystemVerilog, RV32I, memory-mapped I/O, DSP blocks</span>
+        </a>
+      </li>
+      <li>
+        <a href="connect-four/">
+          <span class="title">Connect Four in hardware</span>
+          <span class="year">2025</span>
+          <span class="summary">A two-player game built entirely in Verilog on the DE1-SoC: keyboard in, VGA out, and the game state and win detection in RTL.</span>
+          <span class="tools">Verilog, ModelSim, Quartus, VGA, PS/2</span>
+        </a>
+      </li>
+      <li>
+        <a href="audio-mixer/">
+          <span class="title">Real-time audio mixer</span>
+          <span class="year">2026</span>
+          <span class="summary">A two-song DJ mixer on the DE1-SoC's RISC-V processor, with stems, crossfade, echo and tempo control, and a VGA display of what's active.</span>
+          <span class="tools">C, RISC-V, interrupts, memory-mapped I/O, VGA</span>
+        </a>
+      </li>
+      <li>
+        <a href="urban-cnn/">
+          <span class="title">Rating cities from satellite images</span>
+          <span class="year">2026</span>
+          <span class="summary">A ResNet-18 with three output heads that rates satellite tiles of Canadian cities for building density, street connectivity and green space.</span>
+          <span class="tools">Python, PyTorch, ResNet-18, OpenStreetMap</span>
+        </a>
+      </li>
+    </ul>
+
+  </main>
+</body>
+</html>

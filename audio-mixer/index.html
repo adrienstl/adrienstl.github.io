@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Real-time audio mixer – Adrien Stal</title>
+  <meta name="description" content="A two-song DJ mixer in C on the DE1-SoC's RISC-V processor, using interrupts, memory-mapped audio FIFOs and a double-buffered VGA display.">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <main class="page">
+    <a class="home-link" href="../">Adrien Stal</a>
+
+    <header class="project-head">
+      <h1>Real-time audio mixer</h1>
+      <p>ECE243 Computer Organization, 2026. Built with Shay Hinkson.</p>
+      <p class="tools">C, RISC-V, interrupts, memory-mapped I/O, VGA, DE1-SoC</p>
+    </header>
+
+    <p class="lead">A DJ-style mixer for two songs, running bare-metal on the DE1-SoC's RISC-V processor. Each song is stored as separate vocal and instrumental tracks, and the board's switches and buttons mix them live: bring tracks in and out, crossfade from one song to the other, add an echo, or change the tempo. A VGA display shows which controls are on and which way a fade is going.</p>
+    <p><a href="https://youtu.be/TjdreHOjJAg">Watch the demo on YouTube</a></p>
+
+    <h2>Controls</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Control</th><th>What it does</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>SW0, SW1</td><td>Song 1 vocals, song 1 instrumental</td></tr>
+          <tr><td>SW2, SW3</td><td>Song 2 vocals, song 2 instrumental</td></tr>
+          <tr><td>SW4</td><td>Mute</td></tr>
+          <tr><td>SW5</td><td>Crossfade to the other song</td></tr>
+          <tr><td>SW6</td><td>Echo on or off</td></tr>
+          <tr><td>KEY0, KEY1</td><td>Restart song 1, restart song 2</td></tr>
+          <tr><td>KEY2, KEY3</td><td>Speed up, slow down</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>How it's organized</h2>
+    <p>Everything runs from one main loop. The interrupts only record what the user did. A timer interrupt reads the switches and updates a shared state struct whenever one changes, and the pushbuttons raise their own interrupt through their edge-capture register. The main loop does the real work: it builds the next audio sample from that state and redraws the screen when something has changed.</p>
+    <figure>
+      <a class="zoom" href="block-diagram.png"><img src="block-diagram.png" width="1600" height="746" alt="Block diagram: inside MAIN, the ISR feeds the main logic, which sits between the audio functions and the VGA functions. Song files feed the audio functions, which drive the audio output. The background file feeds the VGA functions, which drive the visual output."></a>
+      <figcaption>Program structure.</figcaption>
+    </figure>
+
+    <h2>The audio path</h2>
+    <p>The songs are 8&nbsp;kHz sample arrays compiled into the program. For each output sample, the loop adds up whichever tracks are switched on, applies the crossfade and echo, and writes the result to the audio codec's left and right FIFOs. It only writes, and only advances through the songs, when both FIFOs have space. That check is what keeps the two channels in step and stops the FIFOs from overflowing.</p>
+    <figure>
+      <a class="zoom" href="audio-path.png"><img src="audio-path.png" width="1571" height="695" alt="Audio processing diagram: the ISR updates AudioState, a struct of audio flags. AudioState, the song files and the audio functions all feed the main audio loop, which drives the audio output."></a>
+      <figcaption>How a sample is produced.</figcaption>
+    </figure>
+    <ul>
+      <li><strong>Crossfade.</strong> Over 6 seconds (48,000 samples) the output slides linearly from one song to the other: the outgoing song is weighted by the time left in the fade and the incoming song by the time elapsed. Both songs keep advancing during the fade, so the incoming one is already playing when it takes over.</li>
+      <li><strong>Echo.</strong> A 2,400-sample ring buffer holds the last 0.3 seconds of audio. Each output sample adds two-thirds of the sample from 0.3 seconds earlier.</li>
+      <li><strong>Tempo.</strong> Each button press changes playback speed by 5%, between 70% and 130%. A counter adds the speed setting on every output sample and steps the song forward each time it passes 100, so faster settings skip samples and slower ones repeat them.</li>
+    </ul>
+
+    <h2>The display</h2>
+    <p>The 320×240 screen shows a background image with indicator boxes for each switch and an arrow while a fade is running. It's double-buffered: we draw the indicators into the back buffer, ask the VGA controller to swap, and don't touch the buffers again until its status register says the swap happened at the next vertical sync. That keeps the display free of tearing without stalling the audio loop.</p>
+    <figure>
+      <a class="zoom" href="display.png"><img src="display.png" width="1590" height="661" alt="VGA overview: shape functions such as fill_rect draw individual shapes; draw functions handle scene rendering, plotting pixels and larger components; MAIN manages animation state, tracks which buffer is being written and waits for vsync."></a>
+      <figcaption>How the drawing code is split up.</figcaption>
+    </figure>
+
+    <h2>My part</h2>
+    <p>I wrote the VGA code and the interrupt handling, worked out how to crossfade between the two songs, and wrote the main loop with Shay. Shay split the songs into vocal and instrumental tracks, converted the audio and the background image into C arrays, and wrote the tempo control.</p>
+
+    <h2>Code</h2>
+    <ul class="files">
+      <li>
+        <a href="https://github.com/adrienstl/adrienstl.github.io/blob/main/audio-mixer/main.c">main.c</a>
+        <span class="note">The whole program except the song and background data, which are large generated arrays.</span>
+      </li>
+    </ul>
+
+    <nav class="next" aria-label="More projects">
+      <div>
+        <span>Next project</span>
+        <a href="../urban-cnn/">Rating cities from satellite images</a>
+      </div>
+      <div>
+        <span>Back to</span>
+        <a href="../">All projects</a>
+      </div>
+    </nav>
+  </main>
+</body>
+</html>
