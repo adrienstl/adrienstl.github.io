@@ -22,7 +22,11 @@
     </header>
 
     <p class="lead">Most of the work in a neural network layer is matrix multiplication. A systolic array does it with a grid of multiply-accumulate (MAC) units that pass operands to their neighbours every cycle, so each value fetched from memory gets reused many times.</p>
-    <p>A typical array's behaviour is fixed when it's synthesized. I wanted one where the dataflow, the arithmetic precision and the matrix size could all be changed from software while it runs, so I built the array, its MAC units, and a small RISC-V processor to control it, all in SystemVerilog.</p>
+    <p>A typical array's behaviour is fixed when it's synthesized. I wanted one where the dataflow, the arithmetic precision and the length of each job are all set from software, so I built the array, its MAC units, and a small RISC-V processor to control it, all in SystemVerilog.</p>
+
+    <h2>How it fits together</h2>
+    <p>The array is a 4×4 grid of processing elements (PEs), and the size is a parameter. Everything around it exists to keep it fed.</p>
+    <p>The processor sees the whole accelerator as a 128&nbsp;KB range of memory addresses. Writes into that range fill two operand buffers, A and B, and a load buffer of 16 registers for the values each PE keeps fixed during a job. Each operand buffer has one bank per row of the array, and each bank is a 512&nbsp;×&nbsp;16-bit block RAM, so every row can read its next value in the same cycle. A router picks which buffer feeds which edge of the array, and skew registers delay row <em>r</em> by <em>r</em> cycles so that each value meets the right partial sum (the running total of products) as data moves diagonally through the grid. Results leave the bottom edge, are sorted into an output buffer with one bank per column, and are read back through the same address range. A controller state machine sequences each job.</p>
 
     <h2>Three dataflows, one array</h2>
     <p>There are three common ways to schedule a matrix multiply on a systolic array, depending on which operand stays put in each processing element:</p>
@@ -31,13 +35,105 @@
       <li><strong>Input stationary</strong>: each element holds an input while the weights stream past it.</li>
       <li><strong>Output stationary</strong>: each element keeps its own partial sum and accumulates in place.</li>
     </ul>
-    <p>Each processing element has multiplexers in front of its operand and partial-sum paths. A configuration setting picks which way the data is routed, so the same hardware runs all three dataflows and can switch between them at run time.</p>
+    <p>Inside a PE this comes down to one question: is the second operand held in place, or streaming past? Three multiplexers answer it. One picks the multiplier's second input: the held value, or the stream coming down from above. One picks what the product is added to: the partial sum arriving from the PE above, or the PE's own running sum. The last picks what the sum register loads: the new sum, the value from above when results are being shifted out, or zero to start a job.</p>
+    <p>Weight and input stationary turn out to be identical inside the PE. The only difference is which buffer the router sends to each edge of the array:</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Dataflow</th><th>Left edge</th><th>Top edge</th><th>Held in each PE</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Weight stationary</td><td>A</td><td>Nothing</td><td>B</td></tr>
+          <tr><td>Input stationary</td><td>B</td><td>Nothing</td><td>A, transposed</td></tr>
+          <tr><td>Output stationary</td><td>A</td><td>B</td><td>Its own running sum</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The dataflow is a field in a configuration register, so switching between the three is a single write between jobs. The router also turns off reads from any buffer the current dataflow doesn't use.</p>
 
-    <h2>Two precisions in the same multipliers</h2>
-    <p>The MAC units are built on the FPGA's variable-precision DSP blocks and use sub-word parallelism: the same hardware can run one 32-bit operation or two 16-bit operations side by side. The chip has a fixed budget of 174 hardware multipliers, so switching to 16-bit mode doubles the number of multiplications done per cycle when the lower precision is good enough.</p>
+    <h2>Two precisions in the same datapath</h2>
+    <p>Every operand is a 16-bit word that holds either one 16-bit integer or two 8-bit integers packed side by side. In 8-bit mode each PE does two multiply-accumulates per cycle instead of one, so the 4×4 array does 32 MACs per cycle instead of 16 for networks where 8-bit precision is enough.</p>
+    <p>Partial sums travel down the array on a 36-bit bus. In 16-bit mode it carries one value: the 32-bit product plus 4 guard bits, extra high bits that give the sum room to grow without overflowing. In 8-bit mode it carries two independent 18-bit lanes, each a 16-bit product plus 2 guard bits, enough for a sum of four products. The adder is split in the middle. In 16-bit mode the carry passes from the low half to the high half as usual. In 8-bit mode that carry is cut, so one lane can never spill into the other.</p>
+
+    <h2>Getting data in and out</h2>
+    <p>In weight and input stationary, the processor writes the 16 held values into the load buffer one at a time, and all 16 PEs copy them in a single cycle at the start of the job. The other matrix then streams out of the operand banks one row per cycle, up to 512 rows per job. In output stationary both matrices stream, and each PE adds up the whole stream itself, so a job is limited to four steps, the most the guard bits are sized for.</p>
+    <p>Each stream carries a valid bit alongside its data. A PE only loads a new operand when the valid bit is set, so its data registers don't switch on idle cycles, and the bit tells the next PE whether there is real work to do.</p>
+    <p>Because of the skew, each column's results come out one cycle after the column to its left. Instead of a triangle of delay registers to line them back up, each bank of the output buffer has its own write pointer, so result <em>m</em> of every column lands at address <em>m</em> whenever it arrives. In output stationary the results are shifted out bottom row first, so the pointer counts down instead of up. Each 36-bit result is also widened on the way in: to one sign-extended 64-bit value in 16-bit mode, or two separate 32-bit integers in 8-bit mode. The processor can use either directly, with no unpacking in software.</p>
+
+    <h2>Running a job</h2>
+    <p>From the processor's side, a job is a short sequence of ordinary stores and loads:</p>
+    <ol>
+      <li>Write the operands into the load buffer and the operand banks.</li>
+      <li>Write the configuration register (dataflow and precision) and the length register.</li>
+      <li>Write the start bit.</li>
+      <li>Read the status register until its done bit is set.</li>
+      <li>Read the results from the output buffer.</li>
+    </ol>
+    <p>The controller then steps through its phases. Setup loads the held values into every PE, or clears the accumulators in output stationary. Stream reads one address from every bank each cycle. Wait gives the last values a fixed number of cycles, worked out from the depth of the array, to finish their trip. Drain, in output stationary only, shifts the finished sums down and out of the array. Done tells the processor the results are ready. A single counter is reused to time every phase.</p>
+    <p>A few details make the interface hard to misuse. While a job runs, writes to the configuration and the buffers are ignored, so its inputs can't change underneath it. A start with an invalid setup, such as a length of zero or one longer than the buffers allow, sets an error bit instead of starting. A cycle-count register records how long the last job took, and an info register reports the array size and buffer depth, so software doesn't have to hard-code them. Finally, there is a single stall input that freezes every register in the array and the controller at once, ready for a future bus that needs to pause the accelerator without losing data. The start and done signals are handled outside the stall, so neither can be missed.</p>
 
     <h2>A processor to drive it</h2>
-    <p>To control the accelerator I wrote a single-cycle RV32I core in SystemVerilog and mapped the accelerator's control registers into its address space. A program sets the dataflow, the precision and the matrix dimensions, then starts the computation, using nothing but ordinary load and store instructions. No custom instructions or special compiler support are needed.</p>
+    <p>To control the accelerator I wrote a single-cycle core for RV32I, the base 32-bit RISC-V instruction set. Every instruction is fetched, decoded, executed and written back between two clock edges, so each one takes one cycle.</p>
+    <p>The decoder turns each instruction into a single control word that sets every multiplexer in the datapath. Around it sit a 32-register file, an immediate generator that reassembles the five ways RISC-V scatters constants across an instruction, a ten-operation ALU, a branch comparator, and a load/store unit that handles byte, halfword and word accesses with sign or zero extension.</p>
+    <p>There is no trap handler, so the core never guesses. Anything outside RV32I, such as a multiply or a control-register instruction, is illegal and stops the core with a fault flag, as does a misaligned access or jump, or an access to an address nothing answers. The faulting instruction writes nothing, and the program counter stays on it, so it's easy to see what went wrong. ECALL and EBREAK stop the core cleanly, which is how a program says it has finished.</p>
+
+    <h2>Keeping it single-cycle with block RAM</h2>
+    <p>The FPGA's block RAMs only read through a register, which would normally cost a cycle on every fetch and every load. Two choices avoid that. The instruction memory is handed the address of the next instruction, so it reads that word on the same clock edge that updates the program counter. The data memory runs on the falling edge of the clock: the address is ready by mid-cycle, the RAM reads or writes at the falling edge, and loaded data has the second half of the cycle to reach the register file.</p>
+    <p>The cost is that the load and store address has to be ready in half a clock period. So loads and stores get their own address adder instead of going through the ALU's input and output multiplexers, which saves about 3&nbsp;ns on that path. Branches get the same treatment: their own comparators read the register file directly, and their own adder forms the target.</p>
+
+    <h2>One address map for everything</h2>
+    <p>The core has a port to the program memory and a data bus. The top four bits of each data address pick where the access goes:</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Address</th><th>What's there</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>0x0000_0000</code></td><td>Program memory, 4&nbsp;KB, on its own port</td></tr>
+          <tr><td><code>0x1000_0000</code></td><td>Data RAM, 8&nbsp;KB</td></tr>
+          <tr><td><code>0x2000_0000</code></td><td>The accelerator's 128&nbsp;KB window</td></tr>
+          <tr><td><code>0x3000_0000</code></td><td>System registers: a result code, a cycle counter, the board's LEDs and a scratch register</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>This is why a job is nothing but ordinary stores and loads. No custom instructions or compiler support are needed. Stores to the accelerator finish in one cycle. Loads take two, because the accelerator's read data comes out of block RAM, so the bus holds the core for the extra cycle. RV32I only offers cycle counters through an optional extension that this core leaves out, so the cycle counter is memory-mapped as well. Any access to an unmapped address, or a byte or halfword access where only whole words are allowed, returns a bus error and the core stops with a fault.</p>
+
+    <h2>Code</h2>
+    <p>All 28 SystemVerilog files are in the <a href="https://github.com/adrienstl/adrienstl.github.io/tree/main/systolic-array/rtl">rtl folder</a>. Good places to start:</p>
+    <ul class="files">
+      <li>
+        <a href="https://github.com/adrienstl/adrienstl.github.io/blob/main/systolic-array/rtl/soc_top.sv">soc_top.sv</a>
+        <span class="note">The whole system: the core, its two memories, the bus, the accelerator and the system registers.</span>
+      </li>
+      <li>
+        <a href="https://github.com/adrienstl/adrienstl.github.io/blob/main/systolic-array/rtl/accel_top.sv">accel_top.sv</a>
+        <span class="note">The accelerator: register block, controller, buffers, router, skews, array and output path.</span>
+      </li>
+      <li>
+        <a href="https://github.com/adrienstl/adrienstl.github.io/blob/main/systolic-array/rtl/pe.sv">pe.sv</a>
+        <span class="note">One processing element: the dataflow multiplexers, the dual-precision multiply and the split accumulate.</span>
+      </li>
+      <li>
+        <a href="https://github.com/adrienstl/adrienstl.github.io/blob/main/systolic-array/rtl/systolic_array.sv">systolic_array.sv</a>
+        <span class="note">The grid of PEs and the wiring between neighbours.</span>
+      </li>
+      <li>
+        <a href="https://github.com/adrienstl/adrienstl.github.io/blob/main/systolic-array/rtl/controller.sv">controller.sv</a>
+        <span class="note">The state machine that steps a job through setup, stream, wait, drain and done.</span>
+      </li>
+      <li>
+        <a href="https://github.com/adrienstl/adrienstl.github.io/blob/main/systolic-array/rtl/mmio_regs.sv">mmio_regs.sv</a>
+        <span class="note">Address decoding, the configuration and status registers, and the check that refuses a bad start.</span>
+      </li>
+      <li>
+        <a href="https://github.com/adrienstl/adrienstl.github.io/blob/main/systolic-array/rtl/rv32i_core.sv">rv32i_core.sv</a>
+        <span class="note">The single-cycle RISC-V core.</span>
+      </li>
+      <li>
+        <a href="https://github.com/adrienstl/adrienstl.github.io/blob/main/systolic-array/rtl/rv32i_decoder.sv">rv32i_decoder.sv</a>
+        <span class="note">Instruction word in, control word out, with anything outside RV32I rejected.</span>
+      </li>
+    </ul>
 
     <nav class="next" aria-label="More projects">
       <div>
