@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Reconfigurable systolic array accelerator · Adrien Stal</title>
+  <title>Reconfigurable systolic array accelerator – Adrien Stal</title>
   <meta name="description" content="A SystemVerilog systolic array for neural network matrix multiplication with run-time dataflow and precision switching, controlled by an RV32I core over memory-mapped I/O.">
   <link rel="icon" href="../favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -26,7 +26,7 @@
 
     <h2>How it fits together</h2>
     <p>The array is a 4×4 grid of processing elements (PEs), and the size is a parameter. Everything around it exists to keep it fed.</p>
-    <p>The processor sees the whole accelerator as a 128&nbsp;KB range of memory addresses. Writes into that range fill two operand buffers, A and B, and a load buffer of 16 registers for the values each PE keeps fixed during a job. Each operand buffer has one bank per row of the array, and each bank is a 512&nbsp;×&nbsp;16-bit block RAM, so every row can read its next value in the same cycle. A router picks which buffer feeds which edge of the array, and skew registers delay row <em>r</em> by <em>r</em> cycles so that each value meets the right partial sum (the running total of products) as data moves diagonally through the grid. Results leave the bottom edge, are sorted into an output buffer with one bank per column, and are read back through the same address range. A controller state machine sequences each job.</p>
+    <p>The processor sees the whole accelerator as a 128&nbsp;KB range of memory addresses. Writes into that range fill two operand buffers, A and B, and a load buffer of 16 registers for the values each PE keeps fixed during a job. Each operand buffer has four banks, one for each row or column it feeds, and each bank is a 512&nbsp;×&nbsp;16-bit block RAM, so every lane can read its next value in the same cycle. A router picks which buffer feeds which edge of the array, and skew registers delay row <em>r</em> by <em>r</em> cycles (and column <em>c</em> by <em>c</em> cycles on the top edge) so that each value meets the right partial sum (the running total of products) as data moves diagonally through the grid. Results leave the bottom edge, are sorted into an output buffer with one bank per column, and are read back through the same address range. A controller state machine sequences each job.</p>
 
     <h2>Three dataflows, one array</h2>
     <p>There are three common ways to schedule a matrix multiply on a systolic array, depending on which operand stays put in each processing element:</p>
