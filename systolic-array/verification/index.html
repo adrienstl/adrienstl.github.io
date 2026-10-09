@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verifying the systolic array accelerator – Adrien Stal</title>
+  <meta name="description" content="How the systolic array accelerator and its RV32I core were verified in ModelSim: reference models, lockstep checking, random tests and mutation testing.">
+  <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <main class="page">
+    <a class="home-link" href="../../">Adrien Stal</a>
+
+    <header class="project-head">
+      <h1>Verifying the systolic array accelerator</h1>
+      <p>How I tested the <a href="../">reconfigurable systolic array accelerator</a> and its RISC-V core.</p>
+      <p class="tools">SystemVerilog testbenches, ModelSim</p>
+    </header>
+
+    <p class="lead">I tested every part of the design in simulation, from a single grid of processing elements up to the whole system running real firmware. Each testbench compares the hardware with a reference I wrote separately from the RTL, so a bug would have to be made twice, in exactly the same way, to slip through.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Testbench</th><th>What it checks</th><th>Result</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>tb_pe_array</td><td>The array of PEs, in every mode</td><td>26 checks pass, on a 4×4 and a 3×5 array</td></tr>
+          <tr><td>tb_accel</td><td>The accelerator, driven the way the processor would</td><td>88 jobs pass, on a 4×4 and a 3×3 array</td></tr>
+          <tr><td>tb_rv32i_core</td><td>The processor, one instruction at a time</td><td>38,530 instructions match the model</td></tr>
+          <tr><td>tb_soc</td><td>The whole system running the firmware</td><td>28 jobs pass, about 2.3 million instructions checked per run</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Two references written on their own</h2>
+    <p>A test is only as good as the answer it compares against. I wrote two reference models without looking at the RTL:</p>
+    <ul>
+      <li><strong>An arithmetic model</strong> that does each multiply-accumulate exactly the way the hardware should, including how each 8-bit lane wraps around. It catches a carry leaking from one lane into the other, not only a wrong total.</li>
+      <li><strong>An instruction-set model</strong> of RV32I, written from the RISC-V manual. It runs next to the processor and works out what every instruction should do.</li>
+    </ul>
+
+    <h2>The array</h2>
+    <p>The first testbench drives the grid of PEs directly. It loads random matrices, runs them in all three dataflows and both precisions, and compares every result that comes out of the bottom of the array with the reference. Each combination runs once normally and once with the array paused at random moments, to show that a pause never changes the answer. It also runs two jobs back to back without a reset in between.</p>
+    <p>One test fills every input with the most negative number, so each product is as large as it can be and the running totals reach the top of their spare bits. The array is also tested at 3×5, not only 4×4. In a square array, rows and columns are easy to mix up without any test noticing.</p>
+
+    <h2>The accelerator</h2>
+    <p>The second testbench plays the part of the processor. It writes the matrices into the buffers the way a driver would, sets up and starts the job, polls the status register, reads the results back, and compares them with A × B from the reference. It covers:</p>
+    <ul>
+      <li>every dataflow and precision, with random lengths and the full 512-row depth</li>
+      <li>the largest possible values</li>
+      <li>random pauses on about one cycle in four</li>
+      <li>jobs back to back with no reset</li>
+      <li>the cycle count: without pauses, every job must take exactly the number of cycles the design predicts</li>
+      <li>the write lock: during each job it tries to overwrite the settings and the buffers, then checks that nothing changed</li>
+      <li>bad setups, like a length of zero, which must raise the error bit and never start</li>
+    </ul>
+    <p>The address map is typed out by hand in the testbench instead of reusing the constants from the RTL, so a mistake in the map itself would show up too.</p>
+
+    <h2>The processor</h2>
+    <p>The core is checked in lockstep with the instruction-set model. Every time the core finishes an instruction, the model runs the same one, and the testbench compares the program counter, the instruction, the register written and any memory access. The model keeps its own copy of memory, so a wrong store is caught at the store itself, not later when something reads it back.</p>
+    <p>Three kinds of programs run through it:</p>
+    <ul>
+      <li><strong>A self-checking test</strong> of all 40 instructions and their corner cases, 939 instructions long. It took exactly 939 cycles, which confirms one cycle per instruction.</li>
+      <li><strong>30 fault cases</strong>: illegal instructions, misaligned loads and stores, jumps to bad addresses, accesses to addresses nothing answers, and a few look-alikes that must not fault. Each real fault must stop the core on the right instruction with nothing written.</li>
+      <li><strong>150 random programs</strong> of 300 instructions each.</li>
+    </ul>
+    <p>The test memory adds random delays and puts junk on the data lines until the real data is ready, so a core that uses its data too early gets caught.</p>
+
+    <h2>The whole system</h2>
+    <p>The last testbench runs the real firmware on the full system: processor, memories, bus and accelerator. Every instruction is still checked against the model, about 2.3 million per run. After each job, the testbench reads A, B and C out of memory and checks that C = A × B with its own arithmetic. The jobs cover all three dataflows, both precisions, matrix sizes that don't divide evenly into tiles, the largest values, a 1×1×1 multiply, and a setup the accelerator must refuse. The whole run is repeated on a 4×4 and a 3×3 array.</p>
+
+    <h2>Do the tests actually catch bugs?</h2>
+    <p>Passing tests only mean something if they would fail on a broken design. To check, I put bugs into a copy of the RTL one at a time and ran the tests again. Some of them:</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Planted bug</th><th>Caught by</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>The wait after streaming is one cycle too short</td><td>tb_accel</td></tr>
+          <tr><td>The router sends A instead of B in input stationary</td><td>tb_accel</td></tr>
+          <tr><td>8-bit results lose their sign</td><td>tb_accel</td></tr>
+          <tr><td>The accelerator accepts writes while a job runs</td><td>tb_accel</td></tr>
+          <tr><td>Rows and columns swapped at the bottom of the array</td><td>tb_pe_array, only at 3×5</td></tr>
+          <tr><td>Subtract runs as add</td><td>tb_rv32i_core</td></tr>
+          <tr><td>Register x0, which must always read 0, can be written</td><td>tb_rv32i_core</td></tr>
+          <tr><td>The bus sends the accelerator's read signal twice</td><td>tb_soc</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Every bug planted in the accelerator was caught. In the processor, 16 of 18 were caught on the first try. The two that got through pointed at real gaps: no test took a branch or jump longer than 2&nbsp;KB, and the test memory never handed back bad data while a load was waiting. I added long jumps in both directions, made the test memory show junk until its data is ready, and added loads that use their own destination register as the address. Now all 18 are caught.</p>
+
+    <h2>Not covered yet</h2>
+    <p>The official RISC-V compliance tests, a run on the physical DE1-SoC board, simulation of the design after place and route, and formal verification.</p>
+
+    <h2>Code</h2>
+    <p>All six files are in the <a href="https://github.com/adrienstl/adrienstl.github.io/tree/main/systolic-array/tb">tb folder</a>:</p>
+    <ul class="files">
+      <li>
+        <a href="https://github.com/adrienstl/adrienstl.github.io/blob/main/systolic-array/tb/tb_ref_pkg.sv">tb_ref_pkg.sv</a>
+        <span class="note">The arithmetic reference model, shared by the array and accelerator tests.</span>
+      </li>
+      <li>
+        <a href="https://github.com/adrienstl/adrienstl.github.io/blob/main/systolic-array/tb/tb_rv32i_iss_pkg.sv">tb_rv32i_iss_pkg.sv</a>
+        <span class="note">The RV32I instruction-set model and the lockstep checker.</span>
+      </li>
+      <li>
+        <a href="https://github.com/adrienstl/adrienstl.github.io/blob/main/systolic-array/tb/tb_pe_array.sv">tb_pe_array.sv</a>
+        <span class="note">The array test.</span>
+      </li>
+      <li>
+        <a href="https://github.com/adrienstl/adrienstl.github.io/blob/main/systolic-array/tb/tb_accel.sv">tb_accel.sv</a>
+        <span class="note">The accelerator test.</span>
+      </li>
+      <li>
+        <a href="https://github.com/adrienstl/adrienstl.github.io/blob/main/systolic-array/tb/tb_rv32i_core.sv">tb_rv32i_core.sv</a>
+        <span class="note">The processor test: instruction test, fault cases and random programs.</span>
+      </li>
+      <li>
+        <a href="https://github.com/adrienstl/adrienstl.github.io/blob/main/systolic-array/tb/tb_soc.sv">tb_soc.sv</a>
+        <span class="note">The whole-system test running the firmware.</span>
+      </li>
+    </ul>
+
+    <nav class="next" aria-label="More pages">
+      <div>
+        <span>Back to</span>
+        <a href="../">Systolic array accelerator</a>
+      </div>
+      <div>
+        <span>Back to</span>
+        <a href="../../">All projects</a>
+      </div>
+    </nav>
+  </main>
+</body>
+</html>
